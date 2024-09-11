@@ -2,6 +2,8 @@
 #define DISPLAYHANDLER_H
 #include <M5Stack.h>
 #include <ArduinoJson.h>
+#include <DataManager.h>
+#include <Api.h>
 
 class DisplayHandler
 {
@@ -27,7 +29,6 @@ class DisplayHandler
     // Page handling for menus.
     int itemsPerPage = 8;
     int page = 1;
-    int currentPage = 1;
     bool first = true;
 
     // Handling the list items in the menues
@@ -75,7 +76,7 @@ public:
         M5.Lcd.setCursor(0, startY + 10);
         M5.Lcd.print(text);
 
-        OpenNavbars(true);
+        OpenNavbars(2);
         while (1)
         {
             M5.update();
@@ -92,7 +93,7 @@ public:
     }
 
     // Select function not used outside of ShowList Function. Used for the visual elements of the select function of ShowList
-    void SelectItem(int itemNumber)
+    void SelectItem(int itemNumber, int currentPage)
     {
         M5.Lcd.setCursor(0, 40);
         int number = itemNumber - ((currentPage - 1) * itemsPerPage);
@@ -117,29 +118,84 @@ public:
             lastItemNumber = number;
         }
     }
-    void ShowMenu()
+
+    int FindIndex(JsonDocument doc, int target)
+    {
+        for (int i = 0; i < doc.size(); i++)
+        {
+            if (doc[i]["id"].as<int>() == target)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+    void ShowMenu(int selected = 1)
     {
         OpenNavbars();
-
+        SetMenuType(0);
         JsonDocument SettingsDoc;
         JsonArray SettingsArray = SettingsDoc.to<JsonArray>();
 
         JsonObject obj1 = SettingsArray.createNestedObject();
-        obj1["Name"] = "Temperature Time";
+        obj1["name"] = "Temperature Time";
 
         JsonObject obj2 = SettingsArray.createNestedObject();
-        obj2["Name"] = "Humidity Time";
+        obj2["name"] = "Light Time";
 
         JsonObject obj3 = SettingsArray.createNestedObject();
-        obj3["Name"] = "Close";
 
-        int res = ShowList(1, SettingsArray.size(), SettingsArray);
+        if (DataManager::isFarenheit)
+        {
+            obj3["name"] = "Conversion (fahrenheit)";
+        }
+        else
+        {
+            obj3["name"] = "Conversion (celsius)";
+        }
+
+        JsonObject obj4 = SettingsArray.createNestedObject();
+        obj4["name"] = "Locations ("+ DataManager::location_name + ")";
+
+        JsonObject obj5 = SettingsArray.createNestedObject();
+        obj5["name"] = "Close";
+
+        int res = ShowList(1, SettingsArray.size(), SettingsArray, "Menu", selected);
 
         if (res == 1)
         {
+            int value = showMinuteSelector(DataManager::TemperatureTime, "Temperature Time");
+            DataManager::TemperatureTime = value;
+            DataManager::Save();
+            ShowMenu();
         }
         else if (res == 2)
         {
+            int value = showMinuteSelector(DataManager::LightTime, "Light Time");
+            DataManager::LightTime = value;
+            DataManager::Save();
+            ShowMenu();
+        }
+        else if (res == 3)
+        {
+            if (DataManager::isFarenheit)
+            {
+                DataManager::isFarenheit = false;
+            }
+            else
+            {
+                DataManager::isFarenheit = true;
+            }
+
+            DataManager::Save();
+
+            ShowMenu(3);
+        }
+        else if(res == 4){
+            ShowLocations();
+            SetMenuType(3);
+            ShowMenu(4);
         }
         else
         {
@@ -147,15 +203,57 @@ public:
         }
     }
     // Shows a Json array on screen min will almost always be 1, And max will almost always be the size of the given array you want to show. Title is the text the top bar needs to show.
-    int ShowList(int min, int max, JsonArray list, String title = "Menu")
+
+    void ShowLocations()
     {
-        SetTopBarText(title);
-        int current = 1;
+        SetMenuType(0);
+        JsonDocument locationsdoc = Api::GetData("/location");
+
+        int index = FindIndex(locationsdoc, DataManager::locationID) + 1;
+
+        int res = ShowList(1, locationsdoc.size(), locationsdoc, "Locations", index) - 1;
+
+        if (locationsdoc[res]["id"].as<int>() != DataManager::locationID)
+        {
+            DataManager::locationID = locationsdoc[res]["id"].as<int>();
+            DataManager::location_name = locationsdoc[res]["name"].as<String>();
+            DataManager::Save();
+        }
+    }
+
+    int ShowList(int min, int max, JsonDocument list, String title = "Menu", int currentlySelected = 1)
+    {
+
+        int totalPages = (max + itemsPerPage - 1) / itemsPerPage;
+
+        int interaction = false;
+        int changedTopMenu = false;
+
+        // Initialize pagination
+        int current = min;
+        int currentPage = 1;
+        bool first = true;
+
+        current = currentlySelected;
+        currentPage = ((current - 1) / itemsPerPage) + 1;
+        SelectItem(currentlySelected, currentPage);
+
+        if (totalPages != 1)
+        {
+            SetTopBarText(title + "    Page: " + String(currentPage) + " of " + String(totalPages));
+        }
+        else
+        {
+            SetTopBarText(title);
+        }
+
+        delay(100);
 
         while (true)
         {
             M5.update();
 
+            // Update display if needed
             if (page != currentPage || first)
             {
                 int firstItemIndex = (currentPage - 1) * itemsPerPage;
@@ -167,8 +265,7 @@ public:
                 for (int i = firstItemIndex; i < firstItemIndex + itemsPerPage && i < list.size(); i++)
                 {
                     int number = i - ((currentPage - 1) * itemsPerPage);
-                    String name = list[i]["Name"];
-                    Serial.println(name);
+                    String name = list[i]["name"];
                     int yPosition = ListStartX + number * (16 + padding);
 
                     M5.Lcd.setCursor(offsetY, yPosition);
@@ -176,46 +273,50 @@ public:
                 }
                 page = currentPage;
                 first = false;
-                SelectItem(current);
+                SelectItem(current, currentPage);
             }
 
+            // Navigate up
             if (M5.BtnA.isPressed() && current > min)
             {
-                current = current - 1;
+                current--;
                 M5.Lcd.setCursor(0, 170);
 
                 if (current < (currentPage - 1) * itemsPerPage + 1)
                 {
                     currentPage--;
+                    SetTopBarText(title + "    Page: " + String(currentPage) + " of " + String(totalPages));
                 }
                 else
                 {
-                    SelectItem(current);
+                    SelectItem(current, currentPage);
                 }
 
                 delay(200);
             }
 
+            // Navigate down
             if (M5.BtnC.isPressed() && current < max)
             {
-                current = current + 1;
+                current++;
                 M5.Lcd.setCursor(0, 170);
 
                 if (current > currentPage * itemsPerPage)
                 {
                     currentPage++;
+                    SetTopBarText(title + "    Page: " + String(currentPage) + " of " + String(totalPages));
                 }
                 else
                 {
-                    SelectItem(current);
+                    SelectItem(current, currentPage);
                 }
 
                 delay(200);
             }
 
+            // Confirm selection or exit
             if (M5.BtnB.wasPressed())
             {
-                SetTopBarText(topBarTextOld);
                 CheckNavbars();
                 ClearDisplay();
                 return current;
@@ -232,6 +333,51 @@ public:
         M5.Lcd.setTextColor(WHITE, BLACK);
     }
 
+    int showMinuteSelector(int initialValue, String title)
+    {
+        SetTopBarText(title);
+        ClearDisplay();
+        String value = "- " + String(initialValue) + "min +";
+        ;
+        int length = M5.Lcd.textWidth(value);
+        M5.Lcd.setCursor(160 - (length / 2), 100);
+        M5.Lcd.print(String(value));
+
+        while (true)
+        {
+            M5.update();
+
+            if (M5.BtnA.isPressed())
+            {
+                if (initialValue > 1)
+                {
+                    initialValue--;
+                    String value = "- " + String(initialValue) + "min +";
+                    int length = M5.Lcd.textWidth(value);
+                    M5.Lcd.setCursor(160 - (length / 2), 100);
+                    M5.Lcd.print(value);
+                    delay(200);
+                }
+            }
+
+            if (M5.BtnB.wasPressed())
+            {
+                return initialValue;
+            }
+
+            if (M5.BtnC.isPressed())
+            {
+                initialValue++;
+                String value = "- " + String(initialValue) + "min +";
+                int length = M5.Lcd.textWidth(value);
+                M5.Lcd.setCursor(160 - (length / 2), 100);
+                M5.Lcd.print(value);
+                delay(200);
+            }
+        }
+        SetTopBarText(topBarTextOld);
+    }
+
     // Opens the menus selected with the TopMenuVisible and BottomMenuVisible bool. A bool is parsed to know if it needs to show Yes/no or the select options on the bottom bar.
     void OpenNavbars(int type = 1)
     {
@@ -241,29 +387,52 @@ public:
         BottomMenuIsOnScreen = BottomMenuVisible;
 
         CurrentMenuType = type;
-        if(TopMenuVisible){
+        if (TopMenuVisible)
+        {
             M5.Lcd.fillRect(0, 0, screenWidth, topMenuHeight, navColor);
         }
-   
-        if(BottomMenuVisible){
+
+        if (BottomMenuVisible)
+        {
             M5.Lcd.fillRect(0, screenHeight - bottomMenuHeight, screenWidth, bottomMenuHeight, navColor);
         }
-      
+
         if (TopMenuIsOnScreen)
         {
             writeTextWithBgColor(topBarTextCurrent, 5, 2, navColor);
         }
 
+        AddMenuButtons(CurrentMenuType);
+    }
+
+    void SetMenuType(int type)
+    {
+        CurrentMenuType = type;
+        if (BottomMenuVisible)
+        {
+            M5.Lcd.fillRect(0, screenHeight - bottomMenuHeight, screenWidth, bottomMenuHeight, navColor);
+        }
+        AddMenuButtons(CurrentMenuType);
+    }
+
+    void AddMenuButtons(int type = 0)
+    {
         if (BottomMenuIsOnScreen)
         {
-            if (type == 2)
+            if (type == 1)
             {
                 writeTextWithBgColor("No", 45, 220, navColor);
                 writeTextWithBgColor("Yes", 232, 220, navColor);
             }
-            else if (type == 3)
+            else if (type == 2)
             {
                 writeTextWithBgColor("Menu", 115, 220, navColor);
+            }
+            else if (type == 3)
+            {
+                writeTextWithBgColor("Refresh", 25, 220, navColor);
+                writeTextWithBgColor("Menu", 140, 220, navColor);
+                writeTextWithBgColor("Capture", 212, 220, navColor);
             }
             else
             {
@@ -301,14 +470,13 @@ public:
         }
     }
 
-    void DrawnBox(const char *content, char *iconPath, int x, int y, int w, int h)
+    void DrawnBox(String content, const char *iconPath, int x, int y, int w, int h)
     {
-
         M5.Lcd.drawRect(x, y, w, h, navColor);
         M5.Lcd.drawRect(x + 1, y + 1, w - 2, h - 2, navColor);
 
         int offset = 7;
-        if (iconPath != "")
+        if (iconPath != nullptr && iconPath[0] != '\0')
         {
             M5.Lcd.drawPngFile(SD, iconPath, x + 10, (y + (h / 2)) - 12, 24, 24);
             offset = 45;

@@ -41,9 +41,15 @@ public:
 
         time_t rawtime;
         struct tm *timeinfo;
+
         time(&rawtime);
 
         timeinfo = localtime(&rawtime);
+
+        if (timeinfo == nullptr)
+        {
+            return "Invalid time";
+        }
 
         strftime(dateL, sizeof(dateL), "%H:%M:%S", timeinfo);
 

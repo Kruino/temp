@@ -36,13 +36,43 @@ public:
         HTTPClient http;
 
         http.begin(DataManager::ApiUrl + path);
-        http.addHeader("Content-Type", "application/json"); 
+        http.addHeader("Content-Type", "application/json");
         http.addHeader("Authorization", "Bearer " + DataManager::Token);
-        
 
         int httpResponseCode = http.POST(body);
 
         return httpResponseCode;
+    }
+
+    static JsonDocument GetData(const String &path)
+    {
+        HTTPClient http;
+        JsonDocument doc; // Adjust size as needed
+
+
+        // Construct the full URL and begin the HTTP request
+        http.begin(DataManager::ApiUrl + path);
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("Authorization", "Bearer " + DataManager::Token);
+
+        int httpResponseCode = http.GET();
+
+        if (httpResponseCode == 200)
+        { // Check if the request was successful
+            String stream = http.getString();
+           
+            DeserializationError error = deserializeJson(doc, stream);
+
+        }
+        else
+        {
+            M5.Lcd.println("Failed to fetch data");
+        }
+
+        // End HTTP request
+        http.end();
+
+        return doc;
     }
 };
 

@@ -15,12 +15,14 @@ public:
     static String Token;
     static JsonArray Locations;
     static int locationID;
+    static String location_name;
 
     static String SSID;
     static String password;
     static String locationUrl;
     static String temperatureUrl;
-
+    static bool isFarenheit;
+    
     static int LightTime;
     static int TemperatureTime;
     
@@ -50,7 +52,7 @@ public:
             }
             DynamicJsonDocument jsonDoc(1024);
 
-            jsonDoc["Url"] = "";
+            jsonDoc["ApiUrl"] = "";
             jsonDoc["Token"] = "";
 
             jsonDoc["SSID"] = "";
@@ -60,6 +62,9 @@ public:
             jsonDoc["LightDelay"] = 15;
 
             jsonDoc["LocationID"] = 0;
+            jsonDoc["LocationID"] = "";
+
+            jsonDoc["isFahrenheit"] = false;
 
 
             if (serializeJsonPretty(jsonDoc, SetupFile) == 0)
@@ -93,12 +98,14 @@ public:
 
         SSID = jsonDoc["SSID"].as<String>();
         password = jsonDoc["Password"].as<String>();
-        ApiUrl = jsonDoc["Url"].as<String>();
+        ApiUrl = jsonDoc["ApiUrl"].as<String>();
         Token = jsonDoc["Token"].as<String>();
         locationID = jsonDoc["LocationID"].as<int>();
+        location_name = jsonDoc["LocationName"].as<String>();
 
         TemperatureTime = jsonDoc["TemperatureDelay"];
         LightTime = jsonDoc["LightDelay"];
+        isFarenheit =  jsonDoc["isFahrenheit"].as<bool>();
     }
     static void Save()
     {
@@ -106,18 +113,19 @@ public:
 
         JsonDocument jsonDoc;
 
-        jsonDoc["API"]["Url"] = ApiUrl;
+        jsonDoc["ApiUrl"] = ApiUrl;
         jsonDoc["Token"] = Token;
 
         jsonDoc["SSID"] = SSID;
         jsonDoc["Password"] = password;
 
         jsonDoc["LocationID"] = locationID;
+        jsonDoc["LocationName"] = location_name;
 
         jsonDoc["TemperatureDelay"] = TemperatureTime;
         jsonDoc["LightDelay"] = LightTime;
-
-        serializeJsonPretty(jsonDoc, filePath);
+        jsonDoc["isFahrenheit"] = isFarenheit;
+        serializeJsonPretty(jsonDoc, SetupFile);
 
         SetupFile.close();
     }
@@ -129,7 +137,10 @@ String DataManager::password = "";
 String DataManager::ApiUrl = "";
 String DataManager::Token = "";
 int DataManager::locationID = 0;
+String DataManager::location_name = "";
 int DataManager::TemperatureTime = 10;
 int DataManager::LightTime = 15;
+JsonArray DataManager::Locations;
+bool DataManager::isFarenheit = false;
 
 #endif
