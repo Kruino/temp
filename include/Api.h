@@ -9,7 +9,8 @@ class Api
 {
 public:
     static String ApiUrl;
-
+    
+    //Checks if it can get from a url. Can be used to check the locations url
     static bool checkURL(String url)
     {
         HTTPClient http;
@@ -31,6 +32,7 @@ public:
         }
     }
 
+    //Posts data to the api
     static int PostData(String path, String body)
     {
         HTTPClient http;
@@ -44,10 +46,11 @@ public:
         return httpResponseCode;
     }
 
+    //Get data from api. Mainly used to get locations from api
     static JsonDocument GetData(const String &path)
     {
         HTTPClient http;
-        JsonDocument doc; // Adjust size as needed
+        JsonDocument doc; 
 
 
         // Construct the full URL and begin the HTTP request
