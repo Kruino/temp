@@ -119,6 +119,7 @@ public:
         }
     }
 
+    //Finds index of item with id in json document
     int FindIndex(JsonDocument doc, int target)
     {
         for (int i = 0; i < doc.size(); i++)
@@ -131,6 +132,8 @@ public:
 
         return -1;
     }
+
+    //Shows the main menu
     void ShowMenu(int selected = 1)
     {
         OpenNavbars();
@@ -220,7 +223,7 @@ public:
             DataManager::Save();
         }
     }
-
+    //Shows a list on the screen to select from. Able to handle multiple pages
     int ShowList(int min, int max, JsonDocument list, String title = "Menu", int currentlySelected = 1)
     {
 
@@ -333,6 +336,7 @@ public:
         M5.Lcd.setTextColor(WHITE, BLACK);
     }
 
+    //Minute selector
     int showMinuteSelector(int initialValue, String title)
     {
         SetTopBarText(title);
@@ -405,6 +409,7 @@ public:
         AddMenuButtons(CurrentMenuType);
     }
 
+    //Changes the menu type
     void SetMenuType(int type)
     {
         CurrentMenuType = type;
@@ -415,6 +420,7 @@ public:
         AddMenuButtons(CurrentMenuType);
     }
 
+    //Adds the bottom bar menu button values
     void AddMenuButtons(int type = 0)
     {
         if (BottomMenuIsOnScreen)
@@ -470,6 +476,7 @@ public:
         }
     }
 
+    //Draws a box with and icon and some text at a specific cordinate
     void DrawnBox(String content, const char *iconPath, int x, int y, int w, int h)
     {
         M5.Lcd.drawRect(x, y, w, h, navColor);
@@ -520,6 +527,7 @@ public:
         OpenNavbars(CurrentMenuType);
     }
 
+    //Sets the color of the menu
     void SetNavColor(int color)
     {
         navColor = color;
@@ -527,6 +535,7 @@ public:
         OpenNavbars(CurrentMenuType);
     }
 
+    //Captures an image of the display
     void captureScreen()
     {
         uint16_t width = 320;
@@ -566,19 +575,22 @@ public:
         return fileName;
     }
 
+
+
+    //Ignorable code for writing to a bmp (Mostly not made by me)
     static void writeBMPHeader(File &file, uint16_t width, uint16_t height)
     {
-        int fileSize = 54 + 2 * width * height; // Header size (54) + RGB565 data size
+        int fileSize = 54 + 2 * width * height;
         int reserved = 0;
         int dataOffset = 54;
 
         int headerSize = 40;
         int planes = 1;
         int bitCount = 16;
-        int compression = 3; // BI_BITFIELDS for 16-bit
+        int compression = 3; 
         int imageSize = 2 * width * height;
 
-        // Write BMP file header
+     
         uint8_t bmpFileHeader[14] = {
             'B', 'M',                                                                                                   // Signature
             (uint8_t)(fileSize), (uint8_t)(fileSize >> 8), (uint8_t)(fileSize >> 16), (uint8_t)(fileSize >> 24),        // File size
@@ -588,7 +600,7 @@ public:
         };
         file.write(bmpFileHeader, sizeof(bmpFileHeader));
 
-        // Write BMP info header
+       
         uint8_t bmpInfoHeader[40] = {
             (uint8_t)(headerSize), (uint8_t)(headerSize >> 8), (uint8_t)(headerSize >> 16), (uint8_t)(headerSize >> 24),     // Header size
             (uint8_t)(width), (uint8_t)(width >> 8), (uint8_t)(width >> 16), (uint8_t)(width >> 24),                         // Width
@@ -604,7 +616,7 @@ public:
         };
         file.write(bmpInfoHeader, sizeof(bmpInfoHeader));
 
-        // Write RGB masks for 16-bit (RGB565)
+        
         int redMask = 0xF800;
         int greenMask = 0x07E0;
         int blueMask = 0x001F;
@@ -612,9 +624,8 @@ public:
         file.write((uint8_t *)&greenMask, 4);
         file.write((uint8_t *)&blueMask, 4);
 
-        // Padding to align the header to a 54-byte total size
         int padding = 0;
-        file.write((uint8_t *)&padding, 4); // Remaining mask bits
+        file.write((uint8_t *)&padding, 4);
     }
 };
 #endif
