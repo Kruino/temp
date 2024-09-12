@@ -8,6 +8,7 @@
 class WifiHandler
 {
 public:
+    //Connects to wifi
     static void ConnectWifi()
     {
         WiFi.mode(WIFI_STA);
@@ -35,6 +36,7 @@ public:
         M5.Lcd.print("\n");
     }
 
+    //Gets the current time
     static String getLocalDateTime()
     {
         char dateL[80];
