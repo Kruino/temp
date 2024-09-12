@@ -26,7 +26,7 @@ public:
     static int LightTime;
     static int TemperatureTime;
     
-
+    //Initializes the data from the sd card. Or creates the file for the user to setup from there.
     static void Initialize()
     {
 
@@ -88,6 +88,7 @@ public:
         }
     }
 
+    //Loads data from SD card
     static void Load()
     {
         File SetupFile = SD.open(filePath, FILE_READ);
@@ -107,6 +108,8 @@ public:
         LightTime = jsonDoc["LightDelay"];
         isFarenheit =  jsonDoc["isFahrenheit"].as<bool>();
     }
+
+    //Saves data to SD card
     static void Save()
     {
         File SetupFile = SD.open(filePath, FILE_WRITE);
@@ -131,6 +134,7 @@ public:
     }
 };
 
+//Initializes the different static variables in the class
 String DataManager::filePath = "/Data.json";
 String DataManager::SSID = "";
 String DataManager::password = "";
