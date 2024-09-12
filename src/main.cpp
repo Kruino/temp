@@ -1,3 +1,31 @@
+/**
+* Temperature, Humidity, Noise, and Light Level Monitoring Project
+* @version 1.0
+* @author Rasmus Andersen <Rasm006p@edu.sde.dk>
+* 
+* Device: M5GO Core ESP32
+* 
+* External Sensors: 
+*   - ENV Sensor (connected to Red port)
+*   - Grovepi Light Sensor (connected to Port B)
+* 
+* External Extras:
+*   - SD Card (4GB) (Required)
+* 
+* External Libraries:
+*   - M5Stack
+*   - ArduinoJson
+*
+* Description: This project involves monitoring environmental conditions, including temperature, humidity, noise level, and light level. It also includes API access to retrieve locations and post data on temperature, humidity, and light levels.
+* 
+* Features:
+*   - On-screen menu for selecting the device's location.
+*   - Ability to switch between Celsius and Fahrenheit.
+*   - Option to adjust the frequency of data postings to the API for temperature and light levels.
+*/
+
+
+//Libraries
 #include <Wire.h>
 #include <M5Stack.h>
 #include <ArduinoJson.h>
@@ -14,79 +42,93 @@
 #define Addr 0x44
 #define AddrPressure 0x70
 
-// const char *ssid = "Linksys00254";
-// const char *password = "35djhay7xz";
-
+//Initialize display handler. Used to handle everything about the display.
 DisplayHandler Display;
 
+
+// Light sensor connected to port B on the M5GO, using data pin 36
 int light_sensor = 36;
 
+// For getting the current time in Denmark. Primarily used to get the time it sends data to the API and show it on the display.
 const char *ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 3600;
 const int daylightOffset_sec = 3600;
 String localTime;
 
-
+// Initialize Setup function
 void setup()
 {
-  Serial.begin(9600);
+  // Initialize sensor connection and M5Go features
   Wire.begin();
   M5.begin();
 
+  // Initialize display: show top bar, set color and text.
   Display.TopMenuVisible = true;
   Display.SetNavColorFromRgb(214, 120, 58);
   Display.SetTopBarText("Initializing");
 
+  // Check if data.json exists; create if it doesn’t and halt execution.
   DataManager::Initialize();
 
+  // Reset the cursor 
   M5.Lcd.setCursor(0, 40);
+
+  // Connect the device to WiFi with settings from data.json.
   WifiHandler::ConnectWifi();
 
+  // If location ID is unset, show menu for selecting location
   if (DataManager::locationID == 0)
   {
     Display.ShowLocations();
   }
 
+  // Configure time based on the above NTP settings.
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
+  // Make the bottom navbar visible and set it to the menu type of 3 (Refresh, Menu, Capture)
   Display.BottomMenuVisible = true;
   Display.CheckNavbars();
   Display.SetMenuType(3);
 
+  // Set top bar text to overview and current location name.
   Display.SetTopBarText("Overview (" + DataManager::location_name + ")");
   Display.ClearDisplay();
-
 }
 
-unsigned long previousMillis = 0;
-const long interval = 10000;
-float V_ref = 0.1;
 
+
+//milliseconds for each of the loop. 
 unsigned long previousMillisMain = 10000;
 unsigned long previousMillisTemp = 0;
 unsigned long previousMillisLight = 0;
 
+//interval for the screens refresh 10sec. Others are set in the DataManager.
 const long intervalMain = 10000;
 
+
+//Initilization of different values needed in the loop
+float V_ref = 0.1;
 float SPL_dB;
 float cTemp;
 float fTemp;
 int raw_light;
 float humidity;
 
-
+//Upload string so it can get refreshed with the standard function and not ruin anything
 String light_string = "Temp Upload: NaN";
 String temp_string = "Light Upload: NaN";
 
 void loop()
 {
+  //Updates the M5GO 
   M5.update();
 
+  //Get the current time.
   localTime = WifiHandler::getLocalDateTime();
-
 
   bool refresh = false;
 
+  //if the right buttons is pressed
   if (M5.BtnC.wasPressed())
   {
     Display.captureScreen();
@@ -95,6 +137,7 @@ void loop()
     Display.SetTopBarText("Overview");
   }
 
+  //if the middle button is pressed
   if (M5.BtnB.wasPressed())
   {
     Display.ShowMenu();
@@ -103,13 +146,16 @@ void loop()
     Display.SetTopBarText("Overview (" + DataManager::location_name + ")");
   }
 
+  //if the right button is pressed
   if (M5.BtnA.wasPressed())
   {
     refresh = true;
   }
 
+
   unsigned long currentMillis = millis();
 
+  //Temperature loop run every 10mins default. Post the data to the api.
   if (currentMillis - previousMillisTemp >= (DataManager::TemperatureTime * 60000))
   {
     previousMillisTemp = currentMillis;
@@ -129,6 +175,7 @@ void loop()
     temp_string = "Temp Upload: " + localTime;
   }
 
+  //Lightlevel loop run every 15mins default. Post the data to the api.
   if (currentMillis - previousMillisLight >= (DataManager::LightTime * 60000))
   {
     previousMillisLight = currentMillis;
@@ -147,6 +194,7 @@ void loop()
     light_string = "Light Upload: " + localTime;
   }
 
+  //Main loop get the current data for the device and shows it on the display.
   if (currentMillis - previousMillisMain >= intervalMain || refresh)
   {
     previousMillisMain = currentMillis;
@@ -168,7 +216,8 @@ void loop()
         data[i] = Wire.read();
       }
     }
-
+    
+    //Data calculations
     cTemp = ((((data[0] * 256.0) + data[1]) * 175) / 65535.0) - 45;
     fTemp = (cTemp * 9.0 / 5.0) + 32.0;
 
@@ -184,6 +233,8 @@ void loop()
     if(DataManager::isFarenheit){
       tempValue = String(fTemp) + " F";
     }
+
+    //Draws a box on the screen with a logo if needed.
     Display.DrawnBox(tempValue, "/Images/Temp.png", 3, 34, 155, 40);
     Display.DrawnBox(String(humidity) + "%", "/Images/Humidity.png", 162, 34, 155, 40);
     Display.DrawnBox(String(SPL_dB) + "db", "/Images/Noise.png", 3, 78, 155, 40);
