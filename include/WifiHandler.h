@@ -13,27 +13,29 @@ public:
     {
         WiFi.mode(WIFI_STA);
         WiFi.begin(DataManager::SSID, DataManager::password);
-        M5.Lcd.print("Connecting");
 
+        CustomDisplayHandler::showCenterMessage("Connecting");
+
+        int loopcount = 0;
         while (WiFi.status() != WL_CONNECTED)
         {
-            M5.Lcd.print(".");
+            loopcount++;
+
+            if(loopcount > 50){
+                break;
+            }
             delay(250);
         }
 
-        if (WiFi.status() != WL_CONNECTED)
-        {
-            M5.Lcd.println("Could not connect to wifi.");
-            M5.Lcd.println("Please check setup in file");
-
-            while (1)
-                ;
+        if(WiFi.status() != WL_CONNECTED){
+            CustomDisplayHandler::ShowText("Could not connect to wifi.\nPlease check setup in file, and try again");
+            while (1);
+            
         }
 
         IPAddress myIP = WiFi.localIP();
-        M5.Lcd.print("\nConnected: ");
-        M5.Lcd.print(myIP);
-        M5.Lcd.print("\n");
+        CustomDisplayHandler::showCenterMessage("Connected: " + myIP.toString());
+        sleep(2);
     }
 
     //Gets the current time

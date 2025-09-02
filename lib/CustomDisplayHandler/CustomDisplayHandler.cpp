@@ -1,99 +1,76 @@
-#ifndef DISPLAYHANDLER_H
-#define DISPLAYHANDLER_H
+#include <CustomDisplayHandler.h>
 #include <M5Stack.h>
 #include <ArduinoJson.h>
 #include <DataManager.h>
+#include <DeviceManager.h>
 #include <Api.h>
 
-class DisplayHandler
-{
-    // Defined screen dimensions
-    int screenHeight = 240;
-    int screenWidth = 320;
 
-    // Height of the 2 navbars
-    int topMenuHeight = 20;
-    int bottomMenuHeight = 30;
+int CustomDisplayHandler::maxY = CustomDisplayHandler::screenHeight;
+int CustomDisplayHandler::startY = 0;
+bool CustomDisplayHandler::BottomMenuIsOnScreen = false;
+bool CustomDisplayHandler::TopMenuIsOnScreen = false;
+int CustomDisplayHandler::CurrentMenuType = 1;
+int CustomDisplayHandler::itemsPerPage = 8;
+int CustomDisplayHandler::page = 1;
+bool CustomDisplayHandler::first = true;
+int CustomDisplayHandler::lastItemListNumber = 0;
+int CustomDisplayHandler::lastItemNumber = 0;
+String CustomDisplayHandler::topBarTextOld = "";
+String CustomDisplayHandler::topBarTextCurrent = "";
+bool CustomDisplayHandler::BottomMenuVisible = false;
+bool CustomDisplayHandler::TopMenuVisible = false;
 
-    // Initialization if the initial height of the content container.
-    int maxY = screenHeight;
-    int startY = 0;
 
-    // Bool to say if the menus are currently on screen on not.
-    bool BottomMenuIsOnScreen = false;
-    bool TopMenuIsOnScreen = false;
 
-    // For reload purposes case i have to reload the title or other values
-    int CurrentMenuType = 1;
-
-    // Page handling for menus.
-    int itemsPerPage = 8;
-    int page = 1;
-    bool first = true;
-
-    // Handling the list items in the menues
-    int lastItemListNumber = 0;
-    int lastItemNumber = 0;
-
-    // Offset setting for the list view
-    int offsetX = 7;
-    int offsetY = 0;
-    int radius = 5;
-    int ListStartX = 30;
-
-    // padding for the list view
-    const int padding = 5;
-
-    // Top bare current and last value initialization.
-    String topBarTextOld = "";
-    String topBarTextCurrent = "";
-
-public:
-    // Values to set the visibility of the header and the navbar.
-    bool BottomMenuVisible = false;
-    bool TopMenuVisible = false;
-
-    // Menu color.
-    int navColor = DARKGREY;
-
-    void SetCursor()
+    void CustomDisplayHandler::SetCursor()
     {
         M5.Lcd.setCursor(0, startY + 5);
     }
     // Sets the topbartext value and updates the header and navbar
-    void SetTopBarText(String text)
+     void CustomDisplayHandler::SetTopBarText(String text)
     {
-        CheckNavbars();
-        topBarTextOld = topBarTextCurrent;
-        topBarTextCurrent = text;
-        OpenNavbars(CurrentMenuType);
+        CustomDisplayHandler::CheckNavbars();
+        CustomDisplayHandler::topBarTextOld = CustomDisplayHandler::topBarTextCurrent;
+        CustomDisplayHandler::topBarTextCurrent = text;
+        CustomDisplayHandler::OpenNavbars(CurrentMenuType);
     }
 
     // Displays a question on the screen for the user to answer
-    bool StartQuestion(String text)
+     bool CustomDisplayHandler::StartQuestion(String text, int menuType)
     {
         ClearDisplay();
         M5.Lcd.setCursor(0, startY + 10);
         M5.Lcd.print(text);
 
-        OpenNavbars(2);
+        OpenNavbars(menuType);
         while (1)
         {
             M5.update();
-            if (M5.BtnA.wasPressed())
-            {
-                return false;
+     
+            
+            if(menuType != 4){
+                if (M5.BtnA.wasPressed())
+                {
+                    return false;
+                }   
+                if (M5.BtnC.wasPressed())
+                {
+                    return true;
+                }
+            }else{
+                if (M5.BtnB.wasPressed())
+                {
+                    return true;
+                }
             }
-
-            if (M5.BtnC.wasPressed())
-            {
-                return true;
-            }
+            
+           
         }
     }
 
     // Select function not used outside of ShowList Function. Used for the visual elements of the select function of ShowList
-    void SelectItem(int itemNumber, int currentPage)
+     void CustomDisplayHandler::SelectItem(int itemNumber, int currentPage)
     {
         M5.Lcd.setCursor(0, 40);
         int number = itemNumber - ((currentPage - 1) * itemsPerPage);
@@ -107,7 +84,7 @@ public:
 
             if (i == number)
             {
-                M5.Lcd.drawRect(offsetY, ((ListStartX - 2) + (i - 1) * (16 + padding)), 320, 20, navColor);
+                M5.Lcd.drawRect(offsetY, ((ListStartX - 2) + (i - 1) * (16 + padding)), 320, 20, DataManager::DisplayColor);
             }
             else
             {
@@ -120,7 +97,7 @@ public:
     }
 
     //Finds index of item with id in json document
-    int FindIndex(JsonDocument doc, int target)
+     int CustomDisplayHandler::FindIndex(JsonDocument doc, int target)
     {
         for (int i = 0; i < doc.size(); i++)
         {
@@ -134,7 +111,7 @@ public:
     }
 
     //Shows the main menu
-    void ShowMenu(int selected = 1)
+     void CustomDisplayHandler::ShowMenu(int selected)
     {
         OpenNavbars();
         SetMenuType(0);
@@ -160,6 +137,12 @@ public:
 
         JsonObject obj4 = SettingsArray.createNestedObject();
         obj4["name"] = "Locations ("+ DataManager::location_name + ")";
+        
+        JsonObject obj7 = SettingsArray.createNestedObject();
+        obj7["name"] = "Show Device ID";
+
+        JsonObject obj6 = SettingsArray.createNestedObject();
+        obj6["name"] = "Notify Device Online";
 
         JsonObject obj5 = SettingsArray.createNestedObject();
         obj5["name"] = "Close";
@@ -200,6 +183,18 @@ public:
             SetMenuType(3);
             ShowMenu(4);
         }
+        else if(res == 5){
+            CustomDisplayHandler::StartQuestion(DataManager::MACID, 4);
+            CustomDisplayHandler::ClearDisplay;
+            ShowMenu(5);
+        }
+        else if(res == 6){
+            CustomDisplayHandler::ShowText("Sending message to MQTT broker");
+            DeviceManager::publishMQTTUpdate();
+            sleep(2);
+            CustomDisplayHandler::ClearDisplay();
+            return;
+        }
         else
         {
             return;
@@ -207,10 +202,10 @@ public:
     }
     // Shows a Json array on screen min will almost always be 1, And max will almost always be the size of the given array you want to show. Title is the text the top bar needs to show.
 
-    void ShowLocations()
+     void CustomDisplayHandler::ShowLocations()
     {
         SetMenuType(0);
-        JsonDocument locationsdoc = Api::GetData("/location");
+        JsonDocument locationsdoc = Api::GetData("/locations");
 
         int index = FindIndex(locationsdoc, DataManager::locationID) + 1;
 
@@ -220,11 +215,12 @@ public:
         {
             DataManager::locationID = locationsdoc[res]["id"].as<int>();
             DataManager::location_name = locationsdoc[res]["name"].as<String>();
+            DataManager::UpdateDeviceLocationOnDatabase(DataManager::locationID);
             DataManager::Save();
         }
     }
     //Shows a list on the screen to select from. Able to handle multiple pages
-    int ShowList(int min, int max, JsonDocument list, String title = "Menu", int currentlySelected = 1)
+     int CustomDisplayHandler::ShowList(int min, int max, JsonDocument list, String title, int currentlySelected)
     {
 
         int totalPages = (max + itemsPerPage - 1) / itemsPerPage;
@@ -328,7 +324,7 @@ public:
     }
 
     // Primary usecase is for writing text on header and navbar. Writes text with the given color as background color so it matches the box it is inside.
-    void writeTextWithBgColor(String text, int posX, int posY, uint16_t color)
+     void CustomDisplayHandler::writeTextWithBgColor(String text, int posX, int posY, uint16_t color)
     {
         M5.Lcd.setTextColor(WHITE, color);
         M5.Lcd.setCursor(posX, posY);
@@ -337,7 +333,7 @@ public:
     }
 
     //Minute selector
-    int showMinuteSelector(int initialValue, String title)
+     int CustomDisplayHandler::showMinuteSelector(int initialValue, String title)
     {
         SetTopBarText(title);
         ClearDisplay();
@@ -383,7 +379,7 @@ public:
     }
 
     // Opens the menus selected with the TopMenuVisible and BottomMenuVisible bool. A bool is parsed to know if it needs to show Yes/no or the select options on the bottom bar.
-    void OpenNavbars(int type = 1)
+     void CustomDisplayHandler::OpenNavbars(int type)
     {
         M5.Lcd.setTextSize(2);
 
@@ -393,64 +389,68 @@ public:
         CurrentMenuType = type;
         if (TopMenuVisible)
         {
-            M5.Lcd.fillRect(0, 0, screenWidth, topMenuHeight, navColor);
+            M5.Lcd.fillRect(0, 0, screenWidth, topMenuHeight, DataManager::DisplayColor);
         }
 
         if (BottomMenuVisible)
         {
-            M5.Lcd.fillRect(0, screenHeight - bottomMenuHeight, screenWidth, bottomMenuHeight, navColor);
+            M5.Lcd.fillRect(0, screenHeight - bottomMenuHeight, screenWidth, bottomMenuHeight, DataManager::DisplayColor);
         }
 
         if (TopMenuIsOnScreen)
         {
-            writeTextWithBgColor(topBarTextCurrent, 5, 2, navColor);
+            writeTextWithBgColor(topBarTextCurrent, 5, 2, DataManager::DisplayColor);
         }
 
         AddMenuButtons(CurrentMenuType);
     }
 
     //Changes the menu type
-    void SetMenuType(int type)
+     void CustomDisplayHandler::SetMenuType(int type)
     {
         CurrentMenuType = type;
         if (BottomMenuVisible)
         {
-            M5.Lcd.fillRect(0, screenHeight - bottomMenuHeight, screenWidth, bottomMenuHeight, navColor);
+            M5.Lcd.fillRect(0, screenHeight - bottomMenuHeight, screenWidth, bottomMenuHeight, DataManager::DisplayColor);
         }
         AddMenuButtons(CurrentMenuType);
     }
 
     //Adds the bottom bar menu button values
-    void AddMenuButtons(int type = 0)
+     void CustomDisplayHandler::AddMenuButtons(int type)
     {
         if (BottomMenuIsOnScreen)
         {
             if (type == 1)
             {
-                writeTextWithBgColor("No", 45, 220, navColor);
-                writeTextWithBgColor("Yes", 232, 220, navColor);
+                writeTextWithBgColor("No", 45, 220, DataManager::DisplayColor);
+                writeTextWithBgColor("Yes", 232, 220, DataManager::DisplayColor);
             }
             else if (type == 2)
             {
-                writeTextWithBgColor("Menu", 115, 220, navColor);
+                writeTextWithBgColor("Menu", 115, 220, DataManager::DisplayColor);
             }
             else if (type == 3)
             {
-                writeTextWithBgColor("Refresh", 25, 220, navColor);
-                writeTextWithBgColor("Menu", 140, 220, navColor);
-                writeTextWithBgColor("Capture", 212, 220, navColor);
+                writeTextWithBgColor("Refresh", 25, 220, DataManager::DisplayColor);
+                writeTextWithBgColor("Menu", 140, 220, DataManager::DisplayColor);
+                writeTextWithBgColor("Capture", 212, 220, DataManager::DisplayColor);
+            }
+            else if (type == 4)
+            {
+                writeTextWithBgColor("Close", 140, 220, DataManager::DisplayColor);
             }
             else
             {
-                writeTextWithBgColor("Last", 45, 220, navColor);
-                writeTextWithBgColor("Continue", 115, 220, navColor);
-                writeTextWithBgColor("Next", 232, 220, navColor);
+                writeTextWithBgColor("Last", 45, 220, DataManager::DisplayColor);
+                writeTextWithBgColor("Continue", 115, 220, DataManager::DisplayColor);
+                writeTextWithBgColor("Next", 232, 220, DataManager::DisplayColor);
             }
         }
     }
 
     // Calculates the current allowed height of the inner content. by screen height - topmenu height if visible and any other navbars.
-    void SetScreenSize()
+     void CustomDisplayHandler::SetScreenSize()
     {
         startY = 0;
         maxY = screenHeight;
@@ -468,7 +468,7 @@ public:
     }
 
     // Checks if a header or navbar is on screen when it should not be and runs the opennavbar function to update them to their actual state.
-    void CheckNavbars()
+     void CustomDisplayHandler::CheckNavbars()
     {
         if (BottomMenuVisible != BottomMenuIsOnScreen || TopMenuVisible != TopMenuIsOnScreen)
         {
@@ -477,10 +477,10 @@ public:
     }
 
     //Draws a box with and icon and some text at a specific cordinate
-    void DrawnBox(String content, const char *iconPath, int x, int y, int w, int h)
+     void CustomDisplayHandler::DrawnBox(String content, const char *iconPath, int x, int y, int w, int h)
     {
-        M5.Lcd.drawRect(x, y, w, h, navColor);
-        M5.Lcd.drawRect(x + 1, y + 1, w - 2, h - 2, navColor);
+        M5.Lcd.drawRect(x, y, w, h, DataManager::DisplayColor);
+        M5.Lcd.drawRect(x + 1, y + 1, w - 2, h - 2, DataManager::DisplayColor);
 
         int offset = 7;
         if (iconPath != nullptr && iconPath[0] != '\0')
@@ -497,7 +497,7 @@ public:
     }
 
     // Shows text on the screen.
-    void ShowText(String text)
+     void CustomDisplayHandler::ShowText(String text)
     {
         SetScreenSize();
         ClearDisplay();
@@ -506,7 +506,7 @@ public:
     }
 
     // Clears the content container.
-    void ClearDisplay()
+     void CustomDisplayHandler::ClearDisplay()
     {
         CheckNavbars();
         SetScreenSize();
@@ -514,29 +514,25 @@ public:
     }
 
     // Tries it best to set a color the display can show from an rgb color.
-    void SetNavColorFromRgb(uint8_t red, uint8_t green, uint8_t blue)
+     void CustomDisplayHandler::SetNavColorFromRgb(uint8_t red, uint8_t green, uint8_t blue)
     {
-        int red5 = (red * 31) / 255;
-        int green6 = (green * 63) / 255;
-        int blue5 = (blue * 31) / 255;
 
-        int colorCode = (red5 << 11) | (green6 << 5) | blue5;
 
-        navColor = colorCode;
+        DataManager::DisplayColor = ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3);;
 
         OpenNavbars(CurrentMenuType);
     }
 
     //Sets the color of the menu
-    void SetNavColor(int color)
+     void CustomDisplayHandler::SetNavColor(int color)
     {
-        navColor = color;
+        DataManager::DisplayColor = color;
 
         OpenNavbars(CurrentMenuType);
     }
 
     //Captures an image of the display
-    void captureScreen()
+     void CustomDisplayHandler::captureScreen()
     {
         uint16_t width = 320;
         uint16_t height = 240;
@@ -563,7 +559,7 @@ public:
         Serial.println("Screenshot saved: " + fileName);
     }
 
-    String generateFileName()
+     String CustomDisplayHandler::generateFileName()
     {
         int fileIndex = 1;
         String fileName;
@@ -578,7 +574,7 @@ public:
 
 
     //Ignorable code for writing to a bmp (Mostly not made by me)
-    static void writeBMPHeader(File &file, uint16_t width, uint16_t height)
+     void CustomDisplayHandler::writeBMPHeader(File &file, uint16_t width, uint16_t height)
     {
         int fileSize = 54 + 2 * width * height;
         int reserved = 0;
@@ -627,5 +623,46 @@ public:
         int padding = 0;
         file.write((uint8_t *)&padding, 4);
     }
-};
-#endif
+
+    void CustomDisplayHandler::showCenterMessage(String text){
+
+        ClearDisplay();
+        int textWidth = M5.Lcd.textWidth(text);
+
+        M5.Lcd.setCursor( ((CustomDisplayHandler::screenWidth / 2) - (textWidth / 2)), CustomDisplayHandler::screenHeight / 2);
+
+        M5.Lcd.println(text);
+
+
+    }
+
+    void CustomDisplayHandler::DrawMainDisplay(){
+        M5.Lcd.setTextSize(2);
+        float fTemp = (DataManager::cTemp * 9.0 / 5.0) + 32.0;
+        String tempValue = String(DataManager::cTemp) + " C";
+        if(DataManager::isFarenheit){
+        tempValue = String(fTemp) + " F";
+        }
+
+            //Draws a box on the screen with a logo if needed.
+        CustomDisplayHandler::DrawnBox(tempValue, "/Images/Temp.png", 3, 34, 155, 40);
+        CustomDisplayHandler::DrawnBox(String(DataManager::humidity) + "%", "/Images/Humidity.png", 162, 34, 155, 40);
+        CustomDisplayHandler::DrawnBox(String(DataManager::SPL_dB) + "db", "/Images/Noise.png", 3, 78, 155, 40);
+        CustomDisplayHandler::DrawnBox(String(DataManager::lightLevel), "/Images/Sun.png", 162, 78, 155, 40);
+
+        if(DataManager::token == ""){
+            M5.Lcd.setTextColor(0xf800);
+            CustomDisplayHandler::DrawnBox("Device unauthorized", "", 3, 122, 314, 82);
+            M5.Lcd.setTextColor(0xffff);
+        }else{
+            CustomDisplayHandler::DrawnBox(DataManager::LastTemperatureUploadTime, "", 3, 130, 314, 32);
+            CustomDisplayHandler::DrawnBox(DataManager::LastLightLevelUploadTime, "", 3, 172, 314, 32);
+
+            M5.Lcd.setTextSize(1);
+            CustomDisplayHandler::writeTextWithBgColor(" Temperature upload ", 3, 122, DataManager::DisplayColor);
+            CustomDisplayHandler::writeTextWithBgColor(" Light upload ", 3, 164, DataManager::DisplayColor);
+            
+        }
+        M5.Lcd.setTextSize(2);
+    }
+

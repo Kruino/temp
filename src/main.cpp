@@ -15,6 +15,7 @@
 * External Libraries:
 *   - M5Stack
 *   - ArduinoJson
+    - PubSubClient
 *
 * Description: This project involves monitoring environmental conditions, including temperature, humidity, noise level, and light level. It also includes API access to retrieve locations and post data on temperature, humidity, and light levels.
 * 
@@ -29,11 +30,13 @@
 #include <Wire.h>
 #include <M5Stack.h>
 #include <ArduinoJson.h>
-#include <DisplayHandler.h>
+#include <CustomDisplayHandler.h>
 #include <DataManager.h>
+#include <DeviceManager.h>
 #include <Api.h>
 #include <WifiHandler.h>
 #include "time.h"
+#include <MQTT.h>
 
 #define ESP_WPS_MODE WPS_TYPE_PBC
 #define M5STACKFIRE_MICROPHONE_PIN 34
@@ -42,8 +45,6 @@
 #define Addr 0x44
 #define AddrPressure 0x70
 
-//Initialize display handler. Used to handle everything about the display.
-DisplayHandler Display;
 
 
 // Light sensor connected to port B on the M5GO, using data pin 36
@@ -55,20 +56,28 @@ const long gmtOffset_sec = 3600;
 const int daylightOffset_sec = 3600;
 String localTime;
 
+
+void updateCallback(char *topic, uint8_t *payload, unsigned int length){
+ DeviceManager::publishMQTTUpdate();
+}
+
+
+
 // Initialize Setup function
 void setup()
 {
   // Initialize sensor connection and M5Go features
   Wire.begin();
   M5.begin();
-
-  // Initialize display: show top bar, set color and text.
-  Display.TopMenuVisible = true;
-  Display.SetNavColorFromRgb(214, 120, 58);
-  Display.SetTopBarText("Initializing");
-
   // Check if data.json exists; create if it doesn’t and halt execution.
   DataManager::Initialize();
+
+  // Initialize display: show top bar, set color and text.
+  CustomDisplayHandler::TopMenuVisible = true;
+  //CustomDisplayHandler::SetNavColorFromRgb(64, 64, 64);
+  CustomDisplayHandler::SetTopBarText("Initializing");
+
+
 
   // Reset the cursor 
   M5.Lcd.setCursor(0, 40);
@@ -76,28 +85,60 @@ void setup()
   // Connect the device to WiFi with settings from data.json.
   WifiHandler::ConnectWifi();
 
+  if(!DataManager::SetToken()){
+    CustomDisplayHandler::ShowText("Device unauthorized.\n\nPlease authorize the device from the dashboard to allow uploads to database.");
+    sleep(10);
+  }
+
+
+
+  MQTT::connect();
+  DeviceManager::publishMQTTUpdate();
+
+
+  MQTT::subscribe("device/Update/request", updateCallback);
+  MQTT::subscribe(DataManager::MACID+"/Settings/Request", DataManager::settingsDataCallback);
+  MQTT::subscribe(DataManager::MACID+"/Device/Restart", DeviceManager::restartCallback);
+  MQTT::subscribe(DataManager::MACID+"/Device/Verified", DeviceManager::deviceVerifiedCallback);
+  MQTT::subscribe(DataManager::MACID+"/Device/Unverified", DeviceManager::deviceUnverifiedCallback);
+  MQTT::subscribe(DataManager::MACID+"/Settings/Update", DataManager::settingsCallback);
+
+  
+
+  // int authCode = Api::GetHttpCode("/verify");
+  // if(authCode != 200){
+  //   DisplayHandler::ShowText("Device not authorized. \n\nPlease contact the \nadministrator. \n\nDeviceID: " + DataManager::MACID + "\n\nResponse code: " + authCode);
+
+  //   while(1);
+  // }
+
+
+  // Api::Setup();
+
+  
   // If location ID is unset, show menu for selecting location
   if (DataManager::locationID == 0)
   {
-    Display.ShowLocations();
+    CustomDisplayHandler::ShowLocations();
   }
 
   // Configure time based on the above NTP settings.
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
   // Make the bottom navbar visible and set it to the menu type of 3 (Refresh, Menu, Capture)
-  Display.BottomMenuVisible = true;
-  Display.CheckNavbars();
-  Display.SetMenuType(3);
+  CustomDisplayHandler::BottomMenuVisible = true;
+  CustomDisplayHandler::CheckNavbars();
+  CustomDisplayHandler::SetMenuType(3);
 
   // Set top bar text to overview and current location name.
-  Display.SetTopBarText("Overview (" + DataManager::location_name + ")");
-  Display.ClearDisplay();
+  CustomDisplayHandler::SetTopBarText("Overview (" + DataManager::location_name + ")");
+  CustomDisplayHandler::ClearDisplay();
 }
 
 
 
 //milliseconds for each of the loop. 
+const unsigned long intervalRestart = 86400000;
 unsigned long previousMillisMain = 10000;
 unsigned long previousMillisTemp = 0;
 unsigned long previousMillisLight = 0;
@@ -120,6 +161,9 @@ String temp_string = "Light Upload: NaN";
 
 void loop()
 {
+  //MQTT loop
+  MQTT::loop();
+
   //Updates the M5GO 
   M5.update();
 
@@ -131,19 +175,19 @@ void loop()
   //if the right buttons is pressed
   if (M5.BtnC.wasPressed())
   {
-    Display.captureScreen();
-    Display.SetTopBarText("Screenshot taken");
+    CustomDisplayHandler::captureScreen();
+    CustomDisplayHandler::SetTopBarText("Screenshot taken");
     delay(1000);
-    Display.SetTopBarText("Overview");
+    CustomDisplayHandler::SetTopBarText("Overview");
   }
 
   //if the middle button is pressed
   if (M5.BtnB.wasPressed())
   {
-    Display.ShowMenu();
-    Display.SetMenuType(3);
+    CustomDisplayHandler::ShowMenu();
+    CustomDisplayHandler::SetMenuType(3);
     refresh = true;
-    Display.SetTopBarText("Overview (" + DataManager::location_name + ")");
+    CustomDisplayHandler::SetTopBarText("Overview (" + DataManager::location_name + ")");
   }
 
   //if the right button is pressed
@@ -155,43 +199,50 @@ void loop()
 
   unsigned long currentMillis = millis();
 
+  if (currentMillis >= intervalRestart) {
+
+    ESP.restart();
+  }
+
+
+
   //Temperature loop run every 10mins default. Post the data to the api.
   if (currentMillis - previousMillisTemp >= (DataManager::TemperatureTime * 60000))
   {
     previousMillisTemp = currentMillis;
 
+    DeviceManager::publishMQTTUpdate();
+    DataManager::LastTemperatureUploadTime = localTime;
+
     JsonDocument doc;
+    doc["LocationID"] = DataManager::locationID;
+    doc["DeviceID"] = DataManager::MACID;
+    doc["Temperature"] = DataManager::cTemp;
+    doc["Humidity"] = DataManager::humidity;
+    String str;
+    serializeJson(doc, str);
 
-    JsonObject object = doc.to<JsonObject>();
-    object["temperature"] = (double)cTemp;
-    object["locationId"] = DataManager::locationID;
-    object["humidity"] = (double)humidity;
+    Api::Post("/data/temperature", str);
 
-    String jsonString;
-    serializeJson(object, jsonString);
-
-    int result = Api::PostData("/temperature", jsonString);
-
-    temp_string = "Temp Upload: " + localTime;
   }
 
   //Lightlevel loop run every 15mins default. Post the data to the api.
   if (currentMillis - previousMillisLight >= (DataManager::LightTime * 60000))
   {
     previousMillisLight = currentMillis;
-
+    
+    DeviceManager::publishMQTTUpdate();
     JsonDocument doc;
+    doc["LocationID"] = DataManager::locationID;
+    doc["DeviceID"] = DataManager::MACID;
+    doc["LightLevel"] = DataManager::lightLevel;
 
-    JsonObject object = doc.to<JsonObject>();
-    object["lightlevel"] = raw_light / 4;
-    object["locationId"] = DataManager::locationID;
+    String str;
+    serializeJson(doc, str);
 
-    String jsonString;
-    serializeJson(object, jsonString);
+    Api::Post("/data/light", str);
 
-    int result = Api::PostData("/lightlevel", jsonString);
-
-    light_string = "Light Upload: " + localTime;
+    DataManager::LastLightLevelUploadTime = localTime;
   }
 
   //Main loop get the current data for the device and shows it on the display.
@@ -229,18 +280,13 @@ void loop()
 
     char charVal[8];
 
-    String tempValue = String(cTemp) + " C";
-    if(DataManager::isFarenheit){
-      tempValue = String(fTemp) + " F";
-    }
+    DataManager::humidity = humidity;
+    DataManager::cTemp = cTemp;
+    DataManager::lightLevel = raw_light;
+    DataManager::SPL_dB = SPL_dB;
 
-    //Draws a box on the screen with a logo if needed.
-    Display.DrawnBox(tempValue, "/Images/Temp.png", 3, 34, 155, 40);
-    Display.DrawnBox(String(humidity) + "%", "/Images/Humidity.png", 162, 34, 155, 40);
-    Display.DrawnBox(String(SPL_dB) + "db", "/Images/Noise.png", 3, 78, 155, 40);
-    Display.DrawnBox(String(raw_light / 12), "/Images/Sun.png", 162, 78, 155, 40);
 
-    Display.DrawnBox(temp_string, "", 3, 122, 314, 32);
-    Display.DrawnBox(light_string, "", 3, 158, 314, 32);
+    CustomDisplayHandler::DrawMainDisplay();
   }
 }
+
