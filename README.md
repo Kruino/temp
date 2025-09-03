@@ -28,6 +28,7 @@
 - **Libraries:**
   - `M5Stack`
   - `ArduinoJson`
+  - `PubSubClient`
 
 ## Setup and Configuration
 
@@ -36,7 +37,7 @@
    - Grovepi Light Sensor to Port B.
 
 2. **Install Required Libraries:**
-   - Install `M5Stack` and `ArduinoJson`
+   - Install `M5Stack`, `ArduinoJson` and `PubSubClient`
 
 3. **Run the device:**
    - Insert a Fat32 formatted `SD Card` and `Run the device` this wil create the Data.json file
@@ -44,6 +45,7 @@
    - Open `Data.json` on the `SD Card`
    - Change value `SSID`, `password` to you routers login
    - Change `ApiUrl` to your api's url.
+   - Change the data within `Mosquitto` to you mosquitto brokers data.
    - Eject the `SD Card` and insert it back into the device
 
 4. **Configure WiFi:**
