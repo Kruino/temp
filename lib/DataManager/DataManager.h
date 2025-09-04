@@ -22,6 +22,8 @@ public:
     static String password;
     static String locationUrl;
     static String temperatureUrl;
+
+
     static bool isFarenheit;
     
     //Mosquitto
@@ -32,7 +34,8 @@ public:
 
     static int LightTime;
     static int TemperatureTime;
-    
+    static int maxTemperature;
+
     static String MACID;
 
 
@@ -43,7 +46,7 @@ public:
     static String LastTemperatureUploadTime;
     static String LastLightLevelUploadTime;
 
-    static int DisplayColor;
+    static uint16_t DisplayColor;
 
     static void Initialize();
     static void Load();

@@ -37,6 +37,11 @@
 #include <WifiHandler.h>
 #include "time.h"
 #include <MQTT.h>
+#include <Adafruit_NeoPixel.h>
+
+#define LED_PIN 15      // RGB LED pin on M5Go
+#define LED_COUNT 10    // Number of LEDs on M5Go base
+
 
 #define ESP_WPS_MODE WPS_TYPE_PBC
 #define M5STACKFIRE_MICROPHONE_PIN 34
@@ -46,6 +51,7 @@
 #define AddrPressure 0x70
 
 
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // Light sensor connected to port B on the M5GO, using data pin 36
 int light_sensor = 36;
@@ -54,14 +60,80 @@ int light_sensor = 36;
 const char *ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 3600;
 const int daylightOffset_sec = 3600;
-String localTime;
 
+String localTime;
+bool userActiavetedAlarm = false;
+bool hasBeenInAlarm = false;
+float LastAlarmTemp = 0;
+bool userTurnedOffAlarm = false;
 
 void updateCallback(char *topic, uint8_t *payload, unsigned int length){
  DeviceManager::publishMQTTUpdate();
 }
 
+void StartAlarm(){
+  if(userActiavetedAlarm){
+      for (int i = 0; i < LED_COUNT; i++) {
+        strip.setPixelColor(i, strip.Color(0, 0, 255)); // Blue
+      }
+    }else{
 
+      JsonDocument doc;
+      doc["DeviceID"] = DataManager::MACID;
+      String docString;
+      serializeJson(doc, docString);
+
+
+      MQTT::publish("device/Alarm/On", docString);
+      for (int i = 0; i < LED_COUNT; i++) {
+        strip.setPixelColor(i, strip.Color(255, 0, 0)); // Red
+      }
+    }
+   
+    strip.show();
+  
+    hasBeenInAlarm = true;
+}
+
+void StopAlarm(){
+
+
+      JsonDocument doc;
+      doc["DeviceID"] = DataManager::MACID;
+      String docString;
+      serializeJson(doc, docString);
+
+
+      MQTT::publish("device/Alarm/Off", docString);
+      for (int i = 0; i < LED_COUNT; i++) {
+        strip.setPixelColor(i, strip.Color(0, 0, 0));
+      }
+      strip.show();
+
+  hasBeenInAlarm = false;
+}
+
+void alarmOnCallback(char *topic, uint8_t *payload, unsigned int length){
+  userActiavetedAlarm = true;
+  CustomDisplayHandler::showCenterMessage("User Started Alarm");
+  StartAlarm();
+  sleep(3);
+  CustomDisplayHandler::ClearDisplay();
+}
+
+void alarmOffCallback(char *topic, uint8_t *payload, unsigned int length){
+  userActiavetedAlarm = false;
+  CustomDisplayHandler::showCenterMessage("User Stopped Alarm");
+
+  StopAlarm();
+
+  userTurnedOffAlarm = true;
+  hasBeenInAlarm = true;
+
+  sleep(3);
+  CustomDisplayHandler::ClearDisplay();
+
+}
 
 // Initialize Setup function
 void setup()
@@ -69,6 +141,10 @@ void setup()
   // Initialize sensor connection and M5Go features
   Wire.begin();
   M5.begin();
+  strip.begin();  
+  strip.show();
+
+
   // Check if data.json exists; create if it doesn’t and halt execution.
   DataManager::Initialize();
 
@@ -96,15 +172,20 @@ void setup()
   DeviceManager::publishMQTTUpdate();
 
 
-  MQTT::subscribe("device/Update/request", updateCallback);
-  MQTT::subscribe(DataManager::MACID+"/Settings/Request", DataManager::settingsDataCallback);
+
+
   MQTT::subscribe(DataManager::MACID+"/Device/Restart", DeviceManager::restartCallback);
   MQTT::subscribe(DataManager::MACID+"/Device/Verified", DeviceManager::deviceVerifiedCallback);
   MQTT::subscribe(DataManager::MACID+"/Device/Unverified", DeviceManager::deviceUnverifiedCallback);
+
+
+  MQTT::subscribe(DataManager::MACID+"/Alarm/On", alarmOnCallback);
+  MQTT::subscribe(DataManager::MACID+"/Alarm/Off", alarmOffCallback);
+
+  MQTT::subscribe("device/Update/request", updateCallback);
   MQTT::subscribe(DataManager::MACID+"/Settings/Update", DataManager::settingsCallback);
-
   
-
+  
   // int authCode = Api::GetHttpCode("/verify");
   // if(authCode != 200){
   //   DisplayHandler::ShowText("Device not authorized. \n\nPlease contact the \nadministrator. \n\nDeviceID: " + DataManager::MACID + "\n\nResponse code: " + authCode);
@@ -142,6 +223,7 @@ const unsigned long intervalRestart = 86400000;
 unsigned long previousMillisMain = 10000;
 unsigned long previousMillisTemp = 0;
 unsigned long previousMillisLight = 0;
+unsigned long previousMillisAlarm = 0;
 
 //interval for the screens refresh 10sec. Others are set in the DataManager.
 const long intervalMain = 10000;
@@ -288,5 +370,30 @@ void loop()
 
     CustomDisplayHandler::DrawMainDisplay();
   }
+
+  if(DataManager::maxTemperature > cTemp && hasBeenInAlarm && !userActiavetedAlarm){
+    hasBeenInAlarm = false;
+    userTurnedOffAlarm = false;
+    StopAlarm();
+    previousMillisAlarm = 0;
+  }
+  
+
+  if(!userActiavetedAlarm){
+     if(!userTurnedOffAlarm && !hasBeenInAlarm && cTemp > DataManager::maxTemperature){
+        previousMillisAlarm = currentMillis;
+    
+        StartAlarm();
+
+      }else if( (!userActiavetedAlarm && hasBeenInAlarm && currentMillis - previousMillisAlarm >= (60000) && cTemp < DataManager::maxTemperature)){
+
+        previousMillisAlarm = currentMillis;
+        StopAlarm();
+      }else if( currentMillis - previousMillisAlarm >= (60000)){
+        previousMillisAlarm = currentMillis;
+      }
+      
+  }
+  
 }
 

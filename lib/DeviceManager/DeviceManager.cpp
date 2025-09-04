@@ -30,13 +30,19 @@ void DeviceManager::publishMQTTUpdate(){
  JsonDocument doc;
 
   doc["DeviceID"] = DataManager::MACID;
-  doc["DeviceName"] = DataManager::DeviceName;
-  doc["TemperatureTime"] = DataManager::TemperatureTime;
+  doc["Name"] = DataManager::DeviceName;
+  doc["TempTime"] = DataManager::TemperatureTime;
   doc["LightTime"] = DataManager::LightTime;
   doc["IsFahrenheit"] = DataManager::isFarenheit;
   doc["Location"] = DataManager::locationID;
-  doc["DisplayColor"] = DataManager::DisplayColor;
-  doc["data"]["Temperature"] = DataManager::cTemp;
+  doc["MaxTemp"] =  DataManager::maxTemperature;
+
+  char hexString[7]; 
+  sprintf(hexString, "0x%04X", DataManager::DisplayColor);
+  
+  doc["DisplayColor"] = hexString;
+
+  doc["data"]["temp"] = DataManager::cTemp;
   doc["data"]["Humidity"] = DataManager::humidity;
   doc["data"]["LightLevel"] = DataManager::lightLevel;
 

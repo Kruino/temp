@@ -31,7 +31,9 @@ String DataManager::LastTemperatureUploadTime = "";
 
 String DataManager::token = "";
 
-int DataManager::DisplayColor = DARKGREY;
+int DataManager::maxTemperature = 0;
+
+uint16_t DataManager::DisplayColor = DARKGREY;
 
 void DataManager::Initialize(){
     if (!SD.begin())
@@ -65,11 +67,13 @@ void DataManager::Initialize(){
 
             jsonDoc["TemperatureDelay"] = 10;
             jsonDoc["LightDelay"] = 15;
+            jsonDoc["MaxTemperature"] = 25;
 
-            jsonDoc["LocationID"] = 0;
             jsonDoc["LocationID"] = "";
 
             jsonDoc["isFahrenheit"] = false;
+
+            jsonDoc["DisplayColor"] = std::to_string(DARKGREY);
 
             jsonDoc["DisplayColor"] = std::to_string(DARKGREY);
 
@@ -117,7 +121,7 @@ void DataManager::Load(){
         DataManager::TemperatureTime = jsonDoc["TemperatureDelay"];
         DataManager::LightTime = jsonDoc["LightDelay"];
         DataManager::isFarenheit =  jsonDoc["isFahrenheit"].as<bool>();
-
+        DataManager::maxTemperature = jsonDoc["MaxTemperature"].as<int>();
         DataManager::mosquitto_server = jsonDoc["Mosquitto"]["Server"].as<String>();
         DataManager::mosquitto_username = jsonDoc["Mosquitto"]["Username"].as<String>();
         DataManager::mosquitto_password = jsonDoc["Mosquitto"]["Password"].as<String>();
@@ -157,7 +161,7 @@ JsonDocument DataManager::GetJsonDocument(File file, bool addDeviceId){
         jsonDoc["TemperatureDelay"] = DataManager::TemperatureTime;
         jsonDoc["LightDelay"] = DataManager::LightTime;
         jsonDoc["isFahrenheit"] = DataManager::isFarenheit;
-
+        jsonDoc["MaxTemperature"] = DataManager::maxTemperature;
 
         jsonDoc["Mosquitto"]["Server"] = DataManager::mosquitto_server;
         jsonDoc["Mosquitto"]["Username"] = DataManager::mosquitto_username;
@@ -187,14 +191,16 @@ void DataManager::settingsCallback(char *topic, uint8_t *payload, unsigned int l
         DataManager::UpdateDeviceLocationOnDatabase(DataManager::locationID);
     }
 
-    DataManager::DeviceName = doc["DeviceName"].as<String>();
+    DataManager::DeviceName = doc["Name"].as<String>();
     DataManager::LightTime = doc["LightTime"].as<int>();
-    DataManager::TemperatureTime = doc["TemperatureTime"].as<int>();
+    DataManager::TemperatureTime = doc["TempTime"].as<int>();
     DataManager::isFarenheit =  doc["IsFahrenheit"].as<bool>();
-
+    DataManager::maxTemperature =  doc["MaxTemp"].as<int>();
+    
     try
     {
         const char* colorStr = doc["DisplayColor"];
+    
         uint16_t color = strtoul(colorStr, nullptr, 0);
         if(DataManager::DisplayColor != color){
             CustomDisplayHandler::SetNavColor(color);
